@@ -1,0 +1,161 @@
+service: timecard-api
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: ap-northeast-1
+  stage: ${opt:stage, 'dev'}
+  environment:
+    USERS_TABLE: ${self:service}-users-${self:provider.stage}
+    WORK_PATTERNS_TABLE: ${self:service}-work-patterns-${self:provider.stage}
+    MONTHLY_RECORDS_TABLE: ${self:service}-monthly-records-${self:provider.stage}
+    DAILY_RECORDS_TABLE: ${self:service}-daily-records-${self:provider.stage}
+    SECRET_KEY: ${ssm:/timecard/secret-key, 'development-secret-key'}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - !GetAtt UsersTable.Arn
+            - !GetAtt UsersTable.Arn/index/*
+            - !GetAtt WorkPatternsTable.Arn
+            - !GetAtt WorkPatternsTable.Arn/index/*
+            - !GetAtt MonthlyRecordsTable.Arn
+            - !GetAtt MonthlyRecordsTable.Arn/index/*
+            - !GetAtt DailyRecordsTable.Arn
+            - !GetAtt DailyRecordsTable.Arn/index/*
+
+functions:
+  api:
+    handler: app.main.handler
+    timeout: 30
+    memorySize: 256
+    events:
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors: true
+      - http:
+          path: /
+          method: ANY
+          cors: true
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: non-linux
+    slim: true
+    strip: false
+    useDownloadCache: true
+    useStaticCache: true
+
+resources:
+  Resources:
+    # ユーザーテーブル
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-users-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: user_id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    # 勤務パターンテーブル
+    WorkPatternsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-work-patterns-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: pattern_id
+            AttributeType: S
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: year_month
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pattern_id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: user-month-index
+            KeySchema:
+              - AttributeName: user_id
+                KeyType: HASH
+              - AttributeName: year_month
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    # 月次記録テーブル
+    MonthlyRecordsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-monthly-records-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: record_id
+            AttributeType: S
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: year_month
+            AttributeType: S
+        KeySchema:
+          - AttributeName: record_id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: user-month-index
+            KeySchema:
+              - AttributeName: user_id
+                KeyType: HASH
+              - AttributeName: year_month
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    # 日次記録テーブル
+    DailyRecordsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-daily-records-${self:provider.stage}
+        AttributeDefinitions:
+          - AttributeName: record_id
+            AttributeType: S
+          - AttributeName: monthly_record_id
+            AttributeType: S
+          - AttributeName: record_date
+            AttributeType: S
+        KeySchema:
+          - AttributeName: record_id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: monthly-date-index
+            KeySchema:
+              - AttributeName: monthly_record_id
+                KeyType: HASH
+              - AttributeName: record_date
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
