@@ -20,7 +20,7 @@ class WorkTimeCalculator:
     
     # 深夜早朝時間帯の定義（分単位）
     NIGHT_START = 22 * 60  # 22:00
-    NIGHT_END = 29 * 60  # 翌5:00（29:00として計算）
+    NIGHT_END = 24 * 60 + 5 * 60  # 翌5:00（24:00 + 5:00 = 29:00として計算）
     EARLY_MORNING_END = 5 * 60  # 5:00
     
     def __init__(self, standard_work_hours: float = 8.0):
@@ -206,22 +206,24 @@ class WorkTimeCalculator:
             if actual_end > actual_start:
                 night_minutes += actual_end - actual_start
         
-        # 休憩時間を考慮（深夜時間帯の休憩は減算）
+        # 休憩時間を考慮（深夜時間帯かつ勤務時間内の休憩は減算）
         if pattern:
             for break_time in pattern.break_times:
                 break_start = self.time_to_minutes(break_time.start_time)
                 break_end = self.time_to_minutes(break_time.end_time)
                 
                 if break_start is not None and break_end is not None:
-                    # 深夜帯の休憩時間を計算
-                    # 早朝部分
-                    if break_start < self.EARLY_MORNING_END:
-                        night_minutes -= min(break_end, self.EARLY_MORNING_END) - break_start
-                    # 深夜部分
-                    if break_end > self.NIGHT_START:
-                        actual_break_start = max(break_start, self.NIGHT_START)
-                        if break_end > actual_break_start:
-                            night_minutes -= break_end - actual_break_start
+                    # 休憩が勤務時間内にある場合のみ処理
+                    if break_start >= start and break_end <= end:
+                        # 深夜帯の休憩時間を計算
+                        # 早朝部分（0:00-5:00）
+                        if break_start < self.EARLY_MORNING_END:
+                            night_minutes -= min(break_end, self.EARLY_MORNING_END) - break_start
+                        # 深夜部分（22:00-24:00+）
+                        if break_end > self.NIGHT_START:
+                            actual_break_start = max(break_start, self.NIGHT_START)
+                            if break_end > actual_break_start:
+                                night_minutes -= break_end - actual_break_start
         
         return max(0, night_minutes)
 

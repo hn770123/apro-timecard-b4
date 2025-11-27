@@ -75,8 +75,10 @@ class DailyRecordService:
             start_time=start_time,
             end_time=end_time,
             note=note,
-            is_note_required=WorkType(work_type) not in [WorkType.WORK, WorkType.REMOTE],
         )
+        
+        # 補足欄必須フラグを設定
+        record.is_note_required = record.should_require_note()
         
         # DynamoDBに保存
         self.table.put_item(Item=record.to_dict())
